@@ -1,0 +1,106 @@
+# ─────────────────────────────────────────────────────────────
+# Dataset — NEVER commit
+# ─────────────────────────────────────────────────────────────
+# MIVIA-IWDD-500 is ~500 videos and ships with NO licence; the
+# maintainers list licensing as unresolved. Redistributing it via
+# a git remote is both a size problem and a legal one.
+DATASET/
+
+# Video files anywhere else (stray copies, clips, exports).
+# Need to commit a demo clip? git add -f path/to/clip.mp4
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+
+# ─────────────────────────────────────────────────────────────
+# Pipeline artifacts
+# ─────────────────────────────────────────────────────────────
+# Feature cache: one .npz per video per VLM signature. Tens of GB
+# after a full extraction run, and fully regenerable from DATASET.
+artifacts/features/
+
+# Raw generated captions (.jsonl, one per video). Large, and
+# regenerable — keep locally for inspection, not in git.
+artifacts/captions/
+
+# Run logs.
+artifacts/logs/
+
+# Model checkpoints. The CNN+GRU one is only ~8 MB, but a full
+# benchmark sweep writes one per fold per architecture.
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+
+# NOTE: small result files under artifacts/runs/ and
+# artifacts/reports/ are deliberately NOT ignored — results.json,
+# benchmark.json, benchmark.md and config.json are what make a run
+# reproducible and reviewable. They are a few KB each.
+
+# ─────────────────────────────────────────────────────────────
+# Python
+# ─────────────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# ─────────────────────────────────────────────────────────────
+# Model / framework caches
+# ─────────────────────────────────────────────────────────────
+# Only matters if HF_HOME or TORCH_HOME is pointed inside the repo.
+.cache/
+hf_cache/
+.huggingface/
+*.lock
+
+# ─────────────────────────────────────────────────────────────
+# Secrets and credentials
+# ─────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+kaggle.json
+*.pem
+*.key
+
+# ─────────────────────────────────────────────────────────────
+# Editors
+# ─────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ─────────────────────────────────────────────────────────────
+# OS
+# ─────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini

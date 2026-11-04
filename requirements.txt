@@ -1,0 +1,18 @@
+# Core
+numpy>=1.26
+PyYAML>=6.0
+opencv-python>=4.9
+Pillow>=10.0
+
+# Deep learning. Install torch matching your CUDA version first, e.g.
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+torch>=2.4
+torchvision>=0.19          # required only by the r3d18 clip baseline
+
+# Vision-language + sentence embedding
+transformers>=4.51         # Qwen3-VL needs a recent release
+accelerate>=0.30
+sentence-transformers>=3.0
+
+# Optional: 8-bit / 4-bit quantisation (cosmos_nano default, Qwen3-VL on small GPUs)
+# bitsandbytes>=0.43

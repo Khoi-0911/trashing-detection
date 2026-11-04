@@ -1,0 +1,113 @@
+{
+  "sampling": {
+    "target_fps": 5.0,
+    "max_frames": 0,
+    "resize_shorter_side": 384,
+    "backend": "opencv"
+  },
+  "TRAINING_SET": {
+    "description": {
+      "split": "TRAINING_SET",
+      "num_videos": 400,
+      "num_positive": 200,
+      "num_negative": 200,
+      "modality": {
+        "static dumping": 100,
+        "normal": 200,
+        "dynamic dumping": 100
+      },
+      "time_of_day": {
+        "day": 360,
+        "night": 40
+      },
+      "lighting": {
+        "high": 376,
+        "low": 24
+      },
+      "duration_total_min": 155.1,
+      "duration_min_s": 2.9,
+      "duration_max_s": 109.52,
+      "duration_mean_s": 23.27,
+      "onset_min_s": 0.0,
+      "onset_max_s": 73.0,
+      "onset_mean_s": 9.36,
+      "distinct_frame_rates": 20,
+      "distinct_resolutions": 31
+    },
+    "issues": {
+      "vid0020": [
+        "only 0.90s after onset"
+      ],
+      "vid0111": [
+        "only 0.87s after onset"
+      ],
+      "vid0139": [
+        "only 0.21s after onset"
+      ],
+      "vid0156": [
+        "only 0.77s after onset"
+      ],
+      "vid0185": [
+        "only 0.32s after onset"
+      ],
+      "vid0212": [
+        "only 0.24s after onset"
+      ],
+      "vid0268": [
+        "only 0.91s after onset"
+      ],
+      "vid0481": [
+        "onset 17.0s beyond duration 14.06s"
+      ]
+    },
+    "labels": {
+      "total_frames": 46665,
+      "positive_frames": 2089,
+      "positive_ratio": 0.0448,
+      "implied_positive_weight": 21.34,
+      "clamped_windows": 28
+    }
+  },
+  "VALIDATION_SET": {
+    "description": {
+      "split": "VALIDATION_SET",
+      "num_videos": 100,
+      "num_positive": 50,
+      "num_negative": 50,
+      "modality": {
+        "normal": 50,
+        "dynamic dumping": 25,
+        "static dumping": 25
+      },
+      "time_of_day": {
+        "day": 90,
+        "night": 10
+      },
+      "lighting": {
+        "high": 96,
+        "low": 4
+      },
+      "duration_total_min": 37.35,
+      "duration_min_s": 4.0,
+      "duration_max_s": 79.13,
+      "duration_mean_s": 22.41,
+      "onset_min_s": 1.0,
+      "onset_max_s": 34.0,
+      "onset_mean_s": 9.18,
+      "distinct_frame_rates": 12,
+      "distinct_resolutions": 18
+    },
+    "issues": {
+      "vid0127": [
+        "only 0.92s after onset"
+      ]
+    },
+    "labels": {
+      "total_frames": 11234,
+      "positive_frames": 540,
+      "positive_ratio": 0.0481,
+      "implied_positive_weight": 19.8,
+      "clamped_windows": 3
+    }
+  }
+}

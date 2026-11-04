@@ -1,0 +1,91 @@
+# Default IWDD pipeline configuration.
+#
+# Values reproduce the reference paper unless a comment says otherwise.
+# Override on the command line or copy this file and edit it.
+
+run_name: default
+
+paths:
+  dataset_root: DATASET
+  train_split: TRAINING_SET
+  test_split: VALIDATION_SET          # named "public test set ID" in the dataset README
+  cache_dir: artifacts/features
+  caption_dir: artifacts/captions
+  output_dir: artifacts/runs
+
+sampling:
+  target_fps: 5.0                     # paper Section 3.2.1
+  max_frames: 0                       # 0 = no cap; longest clip is 109.5s -> 548 frames
+  resize_shorter_side: 384            # corpus spans 320x240 to 4096x2160
+  backend: opencv
+
+labeling:
+  # NOT from the paper: the dataset has no event end time, so the positive
+  # window is synthesised. Sweep post_seconds; 2.0s matches the "5-15 frames"
+  # description in Section 6.1 and the w+ = 8 weight in Section 3.3.
+  pre_seconds: 0.0
+  post_seconds: 2.0
+  clamp_to_duration: true
+  drop_invalid: true                  # drops vid0481 (onset 17s, duration 14.06s)
+  min_tail_seconds: 0.0
+
+caption:
+  backend: smolvlm                    # smolvlm | smolvlm2 | qwen3vl | cosmos_nano | blip | dummy
+  model_id: ""                        # empty = backend default
+  dtype: bfloat16
+  load_in_8bit: false
+  load_in_4bit: false
+  device: auto
+  max_new_tokens: 48
+  batch_size: 8
+  single_prompt: false                # true reproduces the Table 6 ablation
+  save_captions: true
+
+encoder:
+  mode: concat_text                   # concat_text (paper) | per_aspect | vision
+  model_id: sentence-transformers/all-MiniLM-L6-v2   # 384-d, matches Equation 6
+  device: auto
+  batch_size: 128
+  normalize: false
+
+model:
+  name: cnn_gru                       # paper best: BLIP + CNN+GRU, F1 0.7429
+  hidden_dim: 256
+  dropout: 0.3
+  num_layers: 2
+  bidirectional: true
+  conv_channels: 256
+  conv_kernel_size: 3
+  nhead: 4
+  clip_len: 16                        # 3D CNN only
+  clip_size: 112
+  clip_stride: 8
+
+train:
+  epochs: 20
+  batch_size: 4
+  learning_rate: 0.001
+  weight_decay: 0.0
+  positive_weight: 8.0                # paper Section 3.3
+  negative_weight: 1.0
+  grad_clip: 1.0
+  scheduler_factor: 0.5
+  scheduler_patience: 3
+  num_folds: 5
+  seed: 42
+  num_workers: 0
+  early_stopping_patience: 0
+  subset_size: 0                      # set to 50 to mirror the paper subset
+
+postprocess:
+  smoothing_window: 9                 # paper Section 3.2.4
+  peak_threshold: 0.7
+  run_threshold: 0.6
+  min_consecutive: 5
+  onset_from: run_start
+
+metric:
+  tolerance_before: 3.0               # paper Section 3.4: g - 3.0s <= p <= g + 10.0s
+  tolerance_after: 10.0
+  target_fps: 5.0
+  target_memory_gb: 2.0
