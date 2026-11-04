@@ -200,6 +200,21 @@ sufficient.
 `HFChatCaptioner._find_vision_tower` and only caught on review.
 → Compile after every file: `python -m compileall -q iwdd scripts`.
 
+**A fallback that falls back to the thing that just failed.**
+`HFChatCaptioner.load()` did `getattr(transformers, name, None)` and, on
+`None`, assigned `transformers.AutoModelForVision2Seq` — the exact attribute
+that had just been missing. It logged the self-refuting line *"transformers has
+no AutoModelForVision2Seq, falling back to AutoModelForVision2Seq"* and then
+raised `AttributeError` on every video. Root cause: **transformers 5.x removed
+`AutoModelForVision2Seq`** in favour of `AutoModelForImageTextToText`, and
+Colab ships 5.x.
+→ Fixed by `_resolve_model_class()`, which walks
+`[declared] + FALLBACK_MODEL_CLASSES` and raises a useful `ImportError` naming
+the installed version if none exist. Verified against simulated 4.x and 5.x.
+→ **Lesson: a fallback path must name a *different* target than the one that
+failed, and must be exercised before shipping.** This one was never run,
+because no real VLM backend had ever been loaded.
+
 ---
 
 ## 7. What is verified and what is not
@@ -216,17 +231,24 @@ sufficient.
 - `conv3d` end to end: 707 windows / 100 videos → TP=2 FP=12 FN=48 TN=44
 - detector and contest matching at all three boundary cases
 
+**Partially exercised on Colab T4 (2026-11-04):** `smolvlm` reached model
+loading and surfaced the `AutoModelForVision2Seq` removal (see §6). Model
+loading itself is still unconfirmed past that point.
+
 **Never executed — expect first-contact bugs:**
 
-- every real VLM backend: `smolvlm`, `smolvlm2`, `qwen3vl`, `cosmos_nano`, `blip`
+- real captioning end to end: `smolvlm`, `smolvlm2`, `qwen3vl`, `cosmos_nano`, `blip`
 - `SentenceBertEncoder` (the paper's actual `concat_text` path)
 - `r3d18` (needs torchvision)
 - 8-bit / 4-bit quantisation (needs bitsandbytes)
 
 Likely failure points in that untested code: `apply_chat_template` output shape
-per model, whether `Qwen3VLForConditionalGeneration` exists in the installed
-`transformers`, the `images=[[img]]` nesting convention, and
-`_find_vision_tower` not matching a given model's module layout.
+per model, the `images=[[img]]` nesting convention, the `dtype=` kwarg name
+(renamed from `torch_dtype` in transformers 4.56), and `_find_vision_tower` not
+matching a given model's module layout.
+
+Environment note: Colab currently runs Python 3.13 with transformers 5.x. Any
+API assumed from 4.x should be checked against 5.x before use.
 
 `CosmosNanoCaptioner.default_model_id` is `nvidia/Cosmos-Reason1-7B` and is
 **unverified** — check the model card before starting a multi-hour run.

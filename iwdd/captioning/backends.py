@@ -26,7 +26,7 @@ class SmolVLMCaptioner(HFChatCaptioner):
     """
 
     default_model_id = "HuggingFaceTB/SmolVLM-500M-Instruct"
-    model_class_name = "AutoModelForVision2Seq"
+    model_class_name = "AutoModelForImageTextToText"
 
 
 class SmolVLM2Captioner(HFChatCaptioner):
@@ -60,7 +60,7 @@ class CosmosNanoCaptioner(HFChatCaptioner):
     """
 
     default_model_id = "nvidia/Cosmos-Reason1-7B"
-    model_class_name = "AutoModelForVision2Seq"
+    model_class_name = "AutoModelForImageTextToText"
 
     def load(self) -> None:
         """Load the model, defaulting to 8-bit when no precision was chosen."""

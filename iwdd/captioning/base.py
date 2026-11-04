@@ -20,6 +20,14 @@ from .prompts import Aspect, PromptSet
 
 LOGGER = get_logger()
 
+#: Generation classes tried in order when the declared one is unavailable.
+#: transformers 5.x removed ``AutoModelForVision2Seq``; 4.x lacks
+#: ``AutoModelForImageTextToText`` before 4.45, so both are kept.
+FALLBACK_MODEL_CLASSES: tuple[str, ...] = (
+    "AutoModelForImageTextToText",
+    "AutoModelForVision2Seq",
+)
+
 
 @dataclass
 class CaptionSet:
@@ -214,8 +222,9 @@ class HFChatCaptioner(BaseCaptioner):
         model: The loaded generation model.
     """
 
-    #: Dotted name of the ``transformers`` auto or model class to instantiate.
-    model_class_name: str = "AutoModelForVision2Seq"
+    #: Name of the ``transformers`` class to instantiate. When the installed
+    #: version does not provide it, :data:`FALLBACK_MODEL_CLASSES` is tried.
+    model_class_name: str = "AutoModelForImageTextToText"
 
     def __init__(self, config: CaptionConfig | None = None) -> None:
         """Initialise the backend without loading weights.
@@ -240,13 +249,7 @@ class HFChatCaptioner(BaseCaptioner):
         LOGGER.info("Loading %s (%s)", self.model_id, type(self).__name__)
         self.processor = transformers.AutoProcessor.from_pretrained(self.model_id)
 
-        model_cls = getattr(transformers, self.model_class_name, None)
-        if model_cls is None:
-            LOGGER.warning(
-                "transformers has no %s, falling back to AutoModelForVision2Seq",
-                self.model_class_name,
-            )
-            model_cls = transformers.AutoModelForVision2Seq
+        model_cls = self._resolve_model_class()
 
         quantization = self._quantization_config()
         kwargs: dict[str, Any] = {"dtype": self._torch_dtype()}
@@ -374,6 +377,43 @@ class HFChatCaptioner(BaseCaptioner):
             vectors.append(pooled)
 
         return np.concatenate(vectors, axis=0).astype(np.float32)
+
+    def _resolve_model_class(self) -> Any:
+        """Find a usable generation class across transformers versions.
+
+        ``AutoModelForVision2Seq`` was the standard class up to transformers 4.x
+        but was removed in 5.x in favour of ``AutoModelForImageTextToText``.
+        Rather than pin a version, try the declared class first and fall back
+        through the known aliases.
+
+        Returns:
+            The first ``transformers`` class that exists.
+
+        Raises:
+            ImportError: If none of the candidates are available.
+        """
+        import transformers
+
+        candidates: list[str] = [self.model_class_name]
+        candidates += [name for name in FALLBACK_MODEL_CLASSES if name not in candidates]
+
+        for name in candidates:
+            model_cls = getattr(transformers, name, None)
+            if model_cls is not None:
+                if name != self.model_class_name:
+                    LOGGER.warning(
+                        "transformers %s has no %s; using %s instead",
+                        transformers.__version__,
+                        self.model_class_name,
+                        name,
+                    )
+                return model_cls
+
+        raise ImportError(
+            f"transformers {transformers.__version__} provides none of "
+            f"{candidates}. Set caption.model_id and check the model card, "
+            f"or pin a compatible transformers version."
+        )
 
     def _build_chat_text(self, prompt: str) -> str:
         """Render one user turn containing an image and an instruction.
