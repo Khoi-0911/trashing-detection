@@ -88,6 +88,7 @@ hf_cache/
 kaggle.json
 *.pem
 *.key
+CLAUDE.md
 
 # ─────────────────────────────────────────────────────────────
 # Editors
