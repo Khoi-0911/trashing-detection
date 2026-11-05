@@ -54,6 +54,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=8, help="Frames per VLM forward pass")
     parser.add_argument("--max-new-tokens", type=int, default=48)
     parser.add_argument(
+        "--image-splitting",
+        action="store_true",
+        help="Let the processor tile each frame (SmolVLM default; memory hungry)",
+    )
+    parser.add_argument(
+        "--max-image-edge",
+        type=int,
+        default=768,
+        help="Cap the processor image resize in pixels; 0 keeps its default",
+    )
+    parser.add_argument(
         "--single-prompt",
         action="store_true",
         help="Use one generic prompt instead of five (paper Table 6 ablation)",
@@ -97,6 +108,8 @@ def build_config(args: argparse.Namespace) -> ExperimentConfig:
     config.caption.batch_size = args.batch_size
     config.caption.max_new_tokens = args.max_new_tokens
     config.caption.single_prompt = args.single_prompt
+    config.caption.image_splitting = args.image_splitting
+    config.caption.max_image_longest_edge = args.max_image_edge
 
     config.encoder.mode = args.encoder_mode
     config.train.seed = args.seed

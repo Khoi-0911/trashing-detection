@@ -106,6 +106,16 @@ class CaptionConfig:
         single_prompt: Use one generic prompt instead of the five focused ones,
             reproducing the ablation in paper Table 6.
         save_captions: Persist raw caption text for inspection.
+        image_splitting: Let the processor tile each frame into sub-images.
+            SmolVLM (Idefics3) does this by default and it is the dominant
+            memory and compute cost: the processor first upscales to
+            ``longest_edge`` and then cuts 512px tiles, so one 384px
+            surveillance frame can become 7 sub-images. Off by default.
+        max_image_longest_edge: Cap the processor's own resize, in pixels.
+            0 leaves the processor default (1536 for SmolVLM), which upscales
+            frames this pipeline deliberately downscaled.
+        oom_min_batch_size: Smallest batch an OOM retry will fall back to.
+            A long extraction should survive one oversized video, not die.
     """
 
     backend: str = "smolvlm"
@@ -118,6 +128,9 @@ class CaptionConfig:
     batch_size: int = 8
     single_prompt: bool = False
     save_captions: bool = True
+    image_splitting: bool = False
+    max_image_longest_edge: int = 768
+    oom_min_batch_size: int = 1
 
 
 @dataclass
@@ -362,9 +375,15 @@ class ExperimentConfig:
             quant = "4bit"
         else:
             quant = "full"
+        # Image splitting and the resize cap change the captions themselves, so
+        # they belong in the key: otherwise a rerun with different settings
+        # would silently mix two kinds of features in one cache directory.
+        tiles = "split" if self.caption.image_splitting else "nosplit"
+        edge = self.caption.max_image_longest_edge or 0
         return (
             f"{backend}-{model}-{prompts}-{quant}"
             f"-fps{self.sampling.target_fps:g}-{self.encoder.mode}"
+            f"-{tiles}{edge}"
         )
 
 

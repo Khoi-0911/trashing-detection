@@ -247,6 +247,23 @@ backend, before spending GPU time):
 they spend GPU hours.** Both bugs sat in code paths that only a small or
 partial cache reaches.
 
+**CUDA OOM on a T4 at batch 32, and the real cause was not the batch size.**
+SmolVLM is an Idefics3 model: its processor *upscales* to
+``size={"longest_edge": 1536}`` and then tiles the result into 512px
+sub-images. A 384px surveillance frame -- already downscaled on purpose by
+`FrameSampler` -- reached the vision tower as roughly seven sub-images. Peak
+VRAM hit 10.6 GB and a single activation wanted 2.44 GiB. The tell was that
+batch 32 was also *slower* than batch 8 (0.21 vs 0.23 fps): the vision tower,
+not the decoder, was the bottleneck.
+-> Added `caption.image_splitting` (default **False**) and
+`caption.max_image_longest_edge` (default **768**), both passed to
+`AutoProcessor.from_pretrained` and both folded into the cache signature.
+Added OOM backoff that halves the batch and retries, plus
+`torch.cuda.empty_cache()` between videos.
+-> **Lesson: check what the processor does to an image before blaming the
+batch size.** Resizing in `FrameSampler` is not the last word; the processor
+can undo it.
+
 ---
 
 ## 7. What is verified and what is not

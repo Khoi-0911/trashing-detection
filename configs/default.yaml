@@ -40,6 +40,9 @@ caption:
   batch_size: 8
   single_prompt: false                # true reproduces the Table 6 ablation
   save_captions: true
+  image_splitting: false              # SmolVLM tiles frames by default: 7 sub-images
+  max_image_longest_edge: 768         # 0 = processor default (1536, upscales our frames)
+  oom_min_batch_size: 1
 
 encoder:
   mode: concat_text                   # concat_text (paper) | per_aspect | vision

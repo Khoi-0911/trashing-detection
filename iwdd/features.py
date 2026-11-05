@@ -321,6 +321,7 @@ class FeatureExtractionPipeline:
 
         self.probe.add(frames=len(frames), seconds=timer.elapsed)
         self.probe.refresh_peak_memory()
+        self._release_vram()
 
         labels = self.labeler.label(annotation, timestamps)
         return FrameFeatures(
@@ -333,6 +334,22 @@ class FeatureExtractionPipeline:
             duration=float(annotation.duration),
             modality=annotation.modality.value,
         )
+
+    @staticmethod
+    def _release_vram() -> None:
+        """Return cached blocks to CUDA between videos.
+
+        Frame counts vary from 14 to 548, so allocation sizes swing wildly and
+        the caching allocator fragments. The Colab OOM reported 3.49 GiB
+        reserved but unallocated, which is exactly that.
+        """
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except ImportError:  # pragma: no cover - torch optional
+            pass
 
     def _write_captions(self, video_id: str, caption_sets: list[CaptionSet]) -> None:
         """Persist raw captions as JSON Lines for later inspection.

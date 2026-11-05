@@ -250,6 +250,8 @@ class HFChatCaptioner(BaseCaptioner):
         super().__init__(config)
         self.processor: Any = None
         self.model: Any = None
+        #: Batch size that last completed without OOM; 0 means untested.
+        self._effective_batch_size: int = 0
 
     def load(self) -> None:
         """Load the processor and model onto the configured device."""
@@ -262,7 +264,7 @@ class HFChatCaptioner(BaseCaptioner):
             )
 
         LOGGER.info("Loading %s (%s)", self.model_id, type(self).__name__)
-        self.processor = transformers.AutoProcessor.from_pretrained(self.model_id)
+        self.processor = self._load_processor(transformers)
 
         model_cls = self._resolve_model_class()
 
@@ -321,32 +323,61 @@ class HFChatCaptioner(BaseCaptioner):
 
         pil_images = [self._to_pil(image) for image in images]
         outputs: list[str] = []
-        batch_size = max(int(self.config.batch_size), 1)
+        # Start from whatever size last survived, so one OOM does not have to
+        # be rediscovered on every prompt and every subsequent video.
+        batch_size = self._effective_batch_size or max(int(self.config.batch_size), 1)
 
-        for start in range(0, len(pil_images), batch_size):
+        start = 0
+        while start < len(pil_images):
             chunk = pil_images[start : start + batch_size]
-            texts = [self._build_chat_text(prompt) for _ in chunk]
-            inputs = self.processor(
-                text=texts,
-                images=[[image] for image in chunk],
-                return_tensors="pt",
-                padding=True,
-            )
-            inputs = {key: self._move(value) for key, value in inputs.items()}
+            try:
+                outputs.extend(self._generate_chunk(chunk, prompt))
+            except torch.OutOfMemoryError:
+                if batch_size <= self.config.oom_min_batch_size:
+                    raise
+                torch.cuda.empty_cache()
+                batch_size = max(batch_size // 2, self.config.oom_min_batch_size)
+                LOGGER.warning("CUDA OOM; retrying this chunk at batch %d", batch_size)
+                continue
+            start += len(chunk)
 
-            with torch.inference_mode():
-                generated = self.model.generate(
-                    **inputs,
-                    max_new_tokens=self.config.max_new_tokens,
-                    do_sample=False,
-                )
-
-            prompt_len = inputs["input_ids"].shape[1]
-            trimmed = generated[:, prompt_len:]
-            decoded = self.processor.batch_decode(trimmed, skip_special_tokens=True)
-            outputs.extend(self._clean(text) for text in decoded)
-
+        # Keep the reduced size for the rest of this video: if one chunk did
+        # not fit, the next one of the same size will not either.
+        self._effective_batch_size = batch_size
         return outputs
+
+    def _generate_chunk(self, chunk: Sequence[Any], prompt: str) -> list[str]:
+        """Caption one already-sized batch of PIL images.
+
+        Args:
+            chunk: PIL images forming a single forward pass.
+            prompt: Instruction applied to every image.
+
+        Returns:
+            One cleaned caption per image.
+        """
+        import torch
+
+        texts = [self._build_chat_text(prompt) for _ in chunk]
+        inputs = self.processor(
+            text=texts,
+            images=[[image] for image in chunk],
+            return_tensors="pt",
+            padding=True,
+        )
+        inputs = {key: self._move(value) for key, value in inputs.items()}
+
+        with torch.inference_mode():
+            generated = self.model.generate(
+                **inputs,
+                max_new_tokens=self.config.max_new_tokens,
+                do_sample=False,
+            )
+
+        prompt_len = inputs["input_ids"].shape[1]
+        trimmed = generated[:, prompt_len:]
+        decoded = self.processor.batch_decode(trimmed, skip_special_tokens=True)
+        return [self._clean(text) for text in decoded]
 
     def embed_images(self, images: Sequence[np.ndarray]) -> np.ndarray:
         """Return mean-pooled features from the vision tower.
@@ -392,6 +423,48 @@ class HFChatCaptioner(BaseCaptioner):
             vectors.append(pooled)
 
         return np.concatenate(vectors, axis=0).astype(np.float32)
+
+    def _load_processor(self, transformers: Any) -> Any:
+        """Load the processor, constraining how it preprocesses images.
+
+        Two processor defaults dominate memory use on an Idefics3-family model
+        such as SmolVLM, and both work against this pipeline:
+
+        * ``do_image_splitting`` tiles each frame into sub-images.
+        * ``size={"longest_edge": 1536}`` *upscales* frames that
+          :class:`~iwdd.sampling.FrameSampler` already downscaled to 384px.
+
+        Together a single frame can reach the vision tower as seven 512px
+        tiles, which is what exhausts a 16 GB T4 at batch 32.
+
+        Args:
+            transformers: The imported ``transformers`` module.
+
+        Returns:
+            The loaded processor.
+        """
+        kwargs: dict[str, Any] = {}
+        if not self.config.image_splitting:
+            kwargs["do_image_splitting"] = False
+        if self.config.max_image_longest_edge > 0:
+            kwargs["size"] = {"longest_edge": int(self.config.max_image_longest_edge)}
+
+        if kwargs:
+            try:
+                processor = transformers.AutoProcessor.from_pretrained(
+                    self.model_id, **kwargs
+                )
+                LOGGER.info("Processor options applied: %s", kwargs)
+                return processor
+            except (TypeError, ValueError) as exc:
+                # Not every processor accepts these; fall back rather than fail.
+                LOGGER.warning(
+                    "Processor rejected %s (%s); loading with defaults",
+                    sorted(kwargs),
+                    type(exc).__name__,
+                )
+
+        return transformers.AutoProcessor.from_pretrained(self.model_id)
 
     def _resolve_model_class(self) -> Any:
         """Find a usable generation class across transformers versions.
