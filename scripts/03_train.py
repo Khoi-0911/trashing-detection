@@ -26,7 +26,9 @@ from iwdd.datasets import SequenceDataset, build_sequence_loader  # noqa: E402
 from iwdd.features import FeatureCache  # noqa: E402
 from iwdd.models import available_architectures, build_model, input_kind_of  # noqa: E402
 from iwdd.training import CrossValidator, Trainer  # noqa: E402
-from iwdd.utils import set_seed, setup_logging  # noqa: E402
+from iwdd.utils import get_logger, set_seed, setup_logging  # noqa: E402
+
+LOGGER = get_logger()
 
 
 def parse_args() -> argparse.Namespace:
@@ -139,7 +141,8 @@ def load_sequence_dataset(
         A dataset over the cached videos.
 
     Raises:
-        FileNotFoundError: If the cache directory does not exist.
+        FileNotFoundError: If the cache directory is missing, or holds nothing
+            for this split.
     """
     cache_root = Path(config.paths.cache_dir) / signature
     if not cache_root.is_dir():
@@ -154,7 +157,29 @@ def load_sequence_dataset(
     )
     if subset:
         store = store.subset(subset)
-    return SequenceDataset.from_cache(FeatureCache(cache_root), store)
+
+    cache = FeatureCache(cache_root)
+    cached = [a.video_id for a in store if cache.has(a.video_id)]
+    if not cached:
+        # The common cause is extracting one split and training on both, e.g.
+        # "--limit 5 --splits TRAINING_SET" followed by a holdout run that also
+        # wants the test split. Say so instead of raising further downstream.
+        raise FileNotFoundError(
+            f"Feature cache {cache_root} holds none of the {len(store)} videos "
+            f"in split {split!r}.\n"
+            f"Extract it first:\n"
+            f"  python scripts/02_extract_features.py --splits {split} "
+            f"--cache-dir {config.paths.cache_dir}\n"
+            f"Or train with --cv, which uses only the training split."
+        )
+    if len(cached) < len(store):
+        LOGGER.warning(
+            "Split %s: using %d of %d videos (rest not in cache)",
+            split,
+            len(cached),
+            len(store),
+        )
+    return SequenceDataset.from_cache(cache, store.filter(lambda a: cache.has(a.video_id)))
 
 
 def run_sequence(config: ExperimentConfig, args: argparse.Namespace) -> dict:

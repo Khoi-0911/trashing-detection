@@ -340,7 +340,9 @@ class ExperimentConfig:
         """
         destination = Path(path)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
+        destination.write_text(
+            json.dumps(self.to_dict(), indent=2, default=str), encoding="utf-8"
+        )
 
     def feature_signature(self) -> str:
         """Return a short key identifying the feature-extraction settings.

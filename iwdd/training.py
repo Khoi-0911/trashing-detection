@@ -489,7 +489,7 @@ class BenchmarkRunner:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         (output_dir / "benchmark.json").write_text(
-            json.dumps(table, indent=2), encoding="utf-8"
+            json.dumps(table, indent=2, default=str), encoding="utf-8"
         )
 
         lines = [

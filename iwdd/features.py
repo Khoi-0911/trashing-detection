@@ -181,7 +181,7 @@ class FeatureCache:
             payload: JSON-serialisable description of the extraction run.
         """
         path = self.root / self.MANIFEST_NAME
-        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
 
     def read_manifest(self) -> dict:
         """Read the cache manifest.
@@ -344,7 +344,9 @@ class FeatureExtractionPipeline:
         path = self.caption_dir / f"{video_id}.jsonl"
         with open(path, "w", encoding="utf-8") as handle:
             for item in caption_sets:
-                handle.write(json.dumps(item.as_dict(), ensure_ascii=False) + "\n")
+                handle.write(
+                    json.dumps(item.as_dict(), ensure_ascii=False, default=str) + "\n"
+                )
 
 
 def relabel_cache(cache: FeatureCache, store: AnnotationStore, labeler: FrameLabeler) -> int:

@@ -69,11 +69,21 @@ class CaptionSet:
         return [self.texts.get(aspect, "") for aspect in aspects]
 
     def as_dict(self) -> dict[str, Any]:
-        """Return a JSON-serialisable representation."""
+        """Return a JSON-serialisable representation.
+
+        Fields are coerced to built-in types on the way out. Timestamps often
+        arrive as ``numpy.float32`` because they come from a NumPy array, and
+        ``json.dumps`` rejects NumPy scalars outright.
+
+        Returns:
+            A dictionary containing only ``int``, ``float`` and ``str``.
+        """
         return {
-            "frame_index": self.frame_index,
-            "timestamp": self.timestamp,
-            "captions": {aspect.value: text for aspect, text in self.texts.items()},
+            "frame_index": int(self.frame_index),
+            "timestamp": float(self.timestamp),
+            "captions": {
+                aspect.value: str(text) for aspect, text in self.texts.items()
+            },
         }
 
 
@@ -147,9 +157,14 @@ class BaseCaptioner(ABC):
         if not self._loaded:
             self.load()
 
-        timestamps = list(timestamps) if timestamps is not None else [0.0] * len(images)
+        # float() strips NumPy scalar types at the boundary, so nothing
+        # downstream has to know the timestamps came from a NumPy array.
+        if timestamps is not None:
+            stamps = [float(value) for value in timestamps]
+        else:
+            stamps = [0.0] * len(images)
         results = [
-            CaptionSet(frame_index=index, timestamp=timestamps[index])
+            CaptionSet(frame_index=index, timestamp=stamps[index])
             for index in range(len(images))
         ]
 

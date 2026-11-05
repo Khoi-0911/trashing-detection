@@ -215,6 +215,38 @@ the installed version if none exist. Verified against simulated 4.x and 5.x.
 failed, and must be exercised before shipping.** This one was never run,
 because no real VLM backend had ever been loaded.
 
+**NumPy scalars killed a 26-minute captioning run at the write step.**
+`CaptionSet.timestamp` came from `list(numpy_array)`, so it held
+`numpy.float32`, which `json.dumps` refuses. Captioning for all five videos
+succeeded and was then discarded in `_write_captions`.
+-> Fixed by coercing at the boundary (`float()` in `caption_frames`, explicit
+`int`/`float`/`str` in `as_dict`) plus `default=str` on every `json.dumps`
+that writes run output.
+-> **Lesson: coerce NumPy scalars to built-ins at the serialization boundary,
+and order the pipeline so cheap failures happen before expensive work** --
+this crash was at the very end of the costly stage.
+
+**Two crashes found by simulating a 5-video smoke test locally** (dummy
+backend, before spending GPU time):
+
+1. `stratified_folds()` produced **empty folds** when `num_folds` exceeded the
+   rarest class count. 5 videos split 3 positive / 2 negative with
+   `--folds 5` gave folds 4 and 5 zero validation videos, then
+   `ValueError: SequenceDataset received no items`.
+   -> Now capped at `min(class counts)` with a warning, and empty folds are
+   dropped. 40 videos still give a clean 5 folds, so no regression.
+2. **Holdout training died on an unextracted test split.** Extracting with
+   `--splits TRAINING_SET` then training without `--cv` wants
+   VALIDATION_SET too; it logged ~100 individual cache-miss warnings and then
+   raised the same opaque `ValueError`.
+   -> `load_sequence_dataset()` now checks up front and raises a message
+   naming the split, the extraction command, and the `--cv` alternative. It
+   also summarises partial caches in one line instead of one per video.
+
+-> **Lesson: simulate the user's exact situation with the cheap backend before
+they spend GPU hours.** Both bugs sat in code paths that only a small or
+partial cache reaches.
+
 ---
 
 ## 7. What is verified and what is not
@@ -299,3 +331,45 @@ The dummy smoke-test cache is `dummy-default-multi-full-fps5-vision`.
 5. Dataset has **no license** and the maintainers list licensing as unresolved.
    Email the authors (`agreco@unisa.it`, `anricciardi@unisa.it`) before
    publishing a model, generated captions, or results.
+
+---
+
+## 10. Measured throughput on a Colab T4 (2026-11-04)
+
+SmolVLM-500M, fp16, `--batch-size 8`, `--max-new-tokens 48`, 5 prompts, 5 FPS.
+Five videos, 356 frames, 1545 s wall clock:
+
+| video | seconds | frames | fps |
+|---|---|---|---|
+| vid0001 | 129 | 29 | 0.225 |
+| vid0002 | 113 | 26 | 0.230 |
+| vid0003 | 670 | 156 | 0.233 |
+| vid0004 | 402 | 92 | 0.229 |
+| vid0006 | 231 | 53 | 0.229 |
+| **total** | **1545** | **356** | **0.230** |
+
+Remarkably stable across clip lengths. Extrapolated to the full corpus
+(46,665 train + 11,234 test = 57,899 frames):
+
+| scope | hours at 0.230 fps |
+|---|---|
+| TRAINING_SET | **56** |
+| VALIDATION_SET | 14 |
+| both | **70** |
+
+**The stock configuration is not viable on a T4** against a 12-hour Colab
+session. Rough projections for the full corpus:
+
+| change | hours |
+|---|---|
+| baseline | 70 |
+| `--batch-size 32` (peak VRAM was only 3.5 / 16 GB) | ~35 |
+| + `--max-new-tokens 24` | ~19 |
+| + `--target-fps 2` (needs `min_consecutive: 2`) | ~8 |
+| + SmolVLM-256M | ~5 |
+
+Known structural inefficiency, not yet addressed: `caption_frames()` loops
+prompts on the outside, so the vision encoder re-encodes the same frame five
+times. Encoding once and reusing the prefix KV cache across the five prompts
+would cut prefill cost, but it is a non-trivial refactor and decode likely
+dominates at 48 tokens.

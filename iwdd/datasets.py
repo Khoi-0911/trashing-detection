@@ -398,18 +398,42 @@ def stratified_folds(
     cross-validation on a 50-video subset where a single misallocated video
     shifts F1 by two points. Stratification keeps each fold balanced.
 
+    Asking for more folds than the rarest class has members would leave some
+    folds with no validation videos, so ``num_folds`` is capped at that count.
+    This matters on small smoke-test subsets: 5 videos split 3/2 cannot support
+    5 folds, only 2.
+
     Args:
         labels: Video-level binary labels.
-        num_folds: Number of folds.
+        num_folds: Requested number of folds.
         seed: Shuffling seed.
 
     Returns:
-        A list of ``(train_indices, validation_indices)`` pairs.
+        A list of ``(train_indices, validation_indices)`` pairs, none empty.
+
+    Raises:
+        ValueError: If fewer than two folds are possible.
     """
     rng = np.random.default_rng(seed)
     labels = np.asarray(labels)
-    fold_assignment = np.empty(len(labels), dtype=int)
 
+    class_sizes = {int(v): int((labels == v).sum()) for v in np.unique(labels)}
+    max_folds = min(class_sizes.values()) if class_sizes else 0
+    if max_folds < 2:
+        raise ValueError(
+            f"Cannot cross-validate: class counts are {class_sizes}. "
+            f"At least 2 videos per class are required."
+        )
+    if num_folds > max_folds:
+        LOGGER.warning(
+            "Reducing num_folds %d -> %d: class counts are %s",
+            num_folds,
+            max_folds,
+            class_sizes,
+        )
+        num_folds = max_folds
+
+    fold_assignment = np.empty(len(labels), dtype=int)
     for value in np.unique(labels):
         members = np.flatnonzero(labels == value)
         rng.shuffle(members)
@@ -419,7 +443,8 @@ def stratified_folds(
     for fold in range(num_folds):
         validation = np.flatnonzero(fold_assignment == fold).tolist()
         training = np.flatnonzero(fold_assignment != fold).tolist()
-        folds.append((training, validation))
+        if validation and training:
+            folds.append((training, validation))
     return folds
 
 
